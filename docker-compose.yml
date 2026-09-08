@@ -1,0 +1,22 @@
+name: pg-lab
+
+services:
+  lab:
+    image: postgres:17
+    container_name: pglab
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pglab}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pglab}
+      POSTGRES_DB: ${POSTGRES_DB:-pglab}
+    ports:
+      - "${PG_LAB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pglab} -d ${POSTGRES_DB:-pglab}"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  pgdata:
