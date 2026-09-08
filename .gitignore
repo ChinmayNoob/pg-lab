@@ -1,0 +1,41 @@
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.prof
+bin/
+dist/
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Environment / secrets (db passwords etc.)
+.env
+.env.*
+
+# Postgres local data volumes
+pgdata/
+.docker/
+
+# Logs
+*.log
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Original planning chats (superseded by PLAN.md)
+Chat-1.md
+Chat-2.md
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
