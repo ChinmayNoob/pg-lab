@@ -92,6 +92,20 @@ This is the Phase 1 exit test: the MVCC explainer written from memory. `/teach` 
 | Blog work: drafts in `blog/` (source of truth), published to your existing site. **Never build site features for the blog** | You already have a site; the lab's job is content, not web dev |
 | Every experiment runs against a**fresh Docker database** (`docker compose down -v && up`)                                                                                | Reproducibility; no state pollution between posts                          |
 | Commit the raw experiment output (text files) into`blog/experiments/`                                                                                                          | Screenshots lie; transcripts don't                                         |
+| **One branch per phase**, merged into `main` only when the phase's exit test passes (see below)                                                                     | `main` always = working, published state; phases stay isolated and movable |
+
+### Git workflow
+
+```text
+main                          ── stable: every merge = a completed phase ──
+  └── phase-1-mvcc-vacuum     ── all Episode 1–5 work happens here
+```
+
+- Branch per phase: `phase-1-mvcc-vacuum`, `phase-2-concurrency-bloat`, `phase-3-wal-replication`, …
+- Episodes are ordinary commits on the phase branch (code + experiment transcript + post draft together)
+- Merge to `main` **only when the phase's exit test passes** (e.g. Phase 1: the from-memory MVCC explainer). Merge commit message = the phase's one-line lesson.
+- Phase 0 already lives on `main` (it is the lab itself — infrastructure, not a learning phase).
+- If a phase derails: abandon the branch, re-plan, start a fresh branch. `main` never rots.
 
 ---
 
