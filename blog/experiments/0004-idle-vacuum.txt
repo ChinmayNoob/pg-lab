@@ -1,0 +1,82 @@
+EPISODE 2 — idle transaction vs vacuum
+Prediction (before running):
+1. While session A sits idle-in-transaction, I UPDATE t and run VACUUM t.
+   The dead tuples (will / will not) be removed because the older snapshot is possible able to see those row versions 
+2. After A exits, VACUUM t again: dead tuples will be removed because A snapshot is gone 
+3. During step 1, `pglab transactions` will show A's BACKEND_XMIN as: the xid of A's still open transaction that is the older one 
+
+Terminal Response
+
+pglab=# BEGIN ISOLATION LEVEL REPEATABLE READ;
+BEGIN
+pglab=*# SELECT xmin, xmax, i FROM t;
+ xmin | xmax |  i  
+------+------+-----
+  756 |    0 | 201
+  756 |    0 | 202
+  756 |    0 | 203
+(3 rows)
+
+pglab=*# 
+
+PS C:\Users\ChinmaySawant\spam\pg-lab> docker exec -it pglab psql -U pglab -d pglab -c "update t set i = i + 1;"
+UPDATE 3
+
+What's next:
+    Try Docker Debug for seamless, persistent debugging tools in any container or image → docker debug pglab
+    Learn more at https://docs.docker.com/go/debug-cli/
+PS C:\Users\ChinmaySawant\spam\pg-lab> docker exec -it pglab psql -U pglab -d pglab -c "vacuum (verbose) t;"
+>> 
+INFO:  vacuuming "pglab.public.t"
+INFO:  finished vacuuming "pglab.public.t": index scans: 0
+pages: 0 removed, 1 remain, 1 scanned (100.00% of total)
+tuples: 6 removed, 6 remain, 3 are dead but not yet removable
+removable cutoff: 757, which was 1 XIDs old when operation ended
+new relfrozenxid: 756, which is 2 XIDs ahead of previous value
+frozen: 0 pages from table (0.00% of total) had 0 tuples frozen
+index scan not needed: 0 pages from table (0.00% of total) had 0 dead item identifiers removed
+avg read rate: 0.000 MB/s, avg write rate: 5.705 MB/s
+buffer usage: 30 hits, 0 misses, 4 dirtied
+WAL usage: 2 records, 1 full page images, 2067 bytes
+
+PS C:\Users\ChinmaySawant\spam\pg-lab> go run ./cmd/pglab transactions                                      
+PID    USER   STATE                XACT AGE  BACKEND_XMIN  
+12244  pglab  idle in transaction  2m        757           
+PS C:\Users\ChinmaySawant\spam\pg-lab> 
+
+PS C:\Users\ChinmaySawant\spam\pg-lab> go run ./cmd/pglab tables
+>> 
+TABLE   SIZE      LIVE       DEAD  DEAD %  LAST VACUUM  LAST AUTOVACUUM  
+events  130.7 MB  1,000,000  0     0.0%    1h ago       never            
+t       40.0 KB   3          3     50.0%   38s ago      never            
+PS C:\Users\ChinmaySawant\spam\pg-lab> 
+
+
+>> 
+TABLE   SIZE      LIVE       DEAD  DEAD %  LAST VACUUM  LAST AUTOVACUUM  
+events  130.7 MB  1,000,000  0     0.0%    1h ago       never            
+t       40.0 KB   3          3     50.0%   38s ago      never            
+PS C:\Users\ChinmaySawant\spam\pg-lab> docker exec -it pglab psql -U pglab -d pglab -c "vacuum (verbose) t;"
+INFO:  vacuuming "pglab.public.t"
+INFO:  finished vacuuming "pglab.public.t": index scans: 0
+pages: 0 removed, 1 remain, 1 scanned (100.00% of total)
+tuples: 3 removed, 3 remain, 0 are dead but not yet removable
+removable cutoff: 758, which was 0 XIDs old when operation ended
+new relfrozenxid: 757, which is 1 XIDs ahead of previous value
+frozen: 0 pages from table (0.00% of total) had 0 tuples frozen
+index scan not needed: 0 pages from table (0.00% of total) had 0 dead item identifiers removed
+avg read rate: 0.000 MB/s, avg write rate: 30.758 MB/s
+buffer usage: 33 hits, 0 misses, 1 dirtied
+WAL usage: 3 records, 1 full page images, 8518 bytes
+system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+VACUUM
+
+What's next:
+    Try Docker Debug for seamless, persistent debugging tools in any container or image → docker debug pglab
+    Learn more at https://docs.docker.com/go/debug-cli/
+PS C:\Users\ChinmaySawant\spam\pg-lab> go run ./cmd/pglab tables
+TABLE   SIZE      LIVE       DEAD  DEAD %  LAST VACUUM  LAST AUTOVACUUM  
+events  130.7 MB  1,000,000  0     0.0%    1h ago       never            
+t       40.0 KB   3          0     0.0%    8s ago       never            
+PS C:\Users\ChinmaySawant\spam\pg-lab> 
+

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/ChinmayNoob/pg-lab/internal/collector"
@@ -27,6 +28,8 @@ func main() {
 		err = ping(ctx, os.Args[2:])
 	case "tables":
 		err = tables(ctx, os.Args[2:])
+	case "transactions":
+		err = transactions(ctx, os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -45,7 +48,49 @@ usage: pglab <command> [flags]
 
 commands:
   ping        check connectivity to the lab database
-  tables      dead/live tuple stats per table (pg_stat_user_tables)`)
+  tables      dead/live tuple stats per table (pg_stat_user_tables)
+  transactions  sessions holding/awaiting transactions (pg_stat_activity)`)
+}
+
+func transactions(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("transactions", flag.ExitOnError)
+	dsn := fs.String("dsn", postgres.DefaultDSN, "postgres connection string")
+	longer := fs.Duration("longer-than", 5*time.Minute, "flag idle-in-transaction sessions older than this")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	pool, err := postgres.NewPool(ctx, *dsn)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	stats, err := collector.Transactions(ctx, pool)
+	if err != nil {
+		return fmt.Errorf("collect transactions: %w", err)
+	}
+	if len(stats) == 0 {
+		fmt.Println("no other sessions")
+		return nil
+	}
+
+	t := render.NewTable("PID", "USER", "STATE", "XACT AGE", "BACKEND_XMIN")
+	for _, s := range stats {
+		pid := strconv.Itoa(int(s.PID))
+		if s.XactStart == nil {
+			t.Row(pid, s.User, s.State, "-", s.BackendXmin)
+			continue
+		}
+		age := time.Since(*s.XactStart)
+		marker := ""
+		if s.State == "idle in transaction" && age > *longer {
+			marker = " ⚠"
+		}
+		t.Row(pid, s.User, s.State+marker, render.Duration(age), s.BackendXmin)
+	}
+	t.Flush()
+	return nil
 }
 
 func tables(ctx context.Context, args []string) error {

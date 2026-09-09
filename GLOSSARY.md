@@ -21,3 +21,21 @@ _Avoid_: deleted row, garbage row
 **VACUUM**:
 The process that removes dead tuples, making their space reusable; autovacuum does this automatically in the background.
 _Avoid_: cleanup job, defrag
+
+### Snapshots & visibility
+
+**xmax**:
+The transaction ID that replaced or deleted a row version, stamped on the *old* version's header; 0 while the version is still current.
+_Avoid_: deleted-by, expiry
+
+**Snapshot**:
+The list of transactions still in progress when a statement starts; by comparing each version's xmin/xmax against it, Postgres decides what that statement can see.
+_Avoid_: view of data, read state
+
+**backend_xmin**:
+The oldest transaction ID a backend's snapshot might still need — its horizon floor; vacuum may not remove anything dead-at-or-after this value.
+_Avoid_: session xid, lock value
+
+**idle in transaction**:
+A session state where a transaction is open but the client is sending no queries; its backend_xmin still pins the vacuum horizon, so it silently blocks dead-tuple cleanup.
+_Avoid_: hanging session, stuck query

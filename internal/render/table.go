@@ -54,33 +54,33 @@ func RelTime(t *time.Time) string {
 }
 
 func Tables(stats []collector.TableStat) {
-	w := newTableWriter([]string{"TABLE", "SIZE", "LIVE", "DEAD", "DEAD %", "LAST VACUUM", "LAST AUTOVACUUM"})
+	t := NewTable("TABLE", "SIZE", "LIVE", "DEAD", "DEAD %", "LAST VACUUM", "LAST AUTOVACUUM")
 	for _, s := range stats {
 		total := s.LiveTuples + s.DeadTuples
 		deadPct := 0.0
 		if total > 0 {
 			deadPct = 100 * float64(s.DeadTuples) / float64(total)
 		}
-		w.row(s.Name, HumanBytes(s.TotalSize), Comma(s.LiveTuples), Comma(s.DeadTuples),
+		t.Row(s.Name, HumanBytes(s.TotalSize), Comma(s.LiveTuples), Comma(s.DeadTuples),
 			fmt.Sprintf("%.1f%%", deadPct), RelTime(s.LastVacuum), RelTime(s.LastAutovacuum))
 	}
-	w.flush()
+	t.Flush()
 }
 
-type tableWriter struct {
+type Table struct {
 	headers []string
 	rows    [][]string
 }
 
-func newTableWriter(headers []string) *tableWriter {
-	return &tableWriter{headers: headers}
+func NewTable(headers ...string) *Table {
+	return &Table{headers: headers}
 }
 
-func (t *tableWriter) row(cells ...string) {
+func (t *Table) Row(cells ...string) {
 	t.rows = append(t.rows, cells)
 }
 
-func (t *tableWriter) flush() {
+func (t *Table) Flush() {
 	widths := make([]int, len(t.headers))
 	for i, h := range t.headers {
 		widths[i] = len(h)

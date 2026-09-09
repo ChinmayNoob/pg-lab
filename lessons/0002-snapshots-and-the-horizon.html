@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0002 · Snapshots: who sees which version</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<header class="episode">
+  <p class="kicker">pg-lab · Phase 1: MVCC &amp; Vacuum · Lesson 0002</p>
+  <h1>Snapshots: who sees which version, and why an open transaction is vacuum's enemy</h1>
+  <p><em>~15 minutes · feeds Episode 2 (<code>pglab transactions</code>) · exit test: you can explain why vacuum must wait for an idle session.</em></p>
+</header>
+
+<h2>The one idea</h2>
+
+<p>A <strong>snapshot</strong> is, at its core, a list of transaction IDs that were <em>still in progress</em> at one instant. When a query runs, it compares each row version's <code>xmin</code>/<code>xmax</code> against that list and decides: <em>visible, or invisible?</em></p>
+
+<p>The rule, precisely:</p>
+
+<blockquote>A row version is visible to a snapshot if the version's <code>xmin</code> transaction had <strong>committed</strong> before the snapshot was taken, and its <code>xmax</code> transaction had <strong>not</strong>.</blockquote>
+
+<p>Note the word <em>committed</em> — not "started". A transaction that is open but has written nothing yet still counts as in-progress: its future writes must stay invisible, and Postgres can't know yet whether it will commit.</p>
+
+<h2>This explains your xmax confusion</h2>
+
+<p>In Lesson 0001 you observed: after the <code>UPDATE</code>, every row showed <code>xmin = 752, xmax = 0</code> — and you honestly wrote <em>"xmax still stays the zero, I don't know the real reason."</em> Here is the real reason:</p>
+
+<ul>
+  <li>Your <code>SELECT</code> took a snapshot. Under that snapshot, only the <strong>new</strong> versions (xmin 752) were visible.</li>
+  <li>The <strong>old</strong> versions (xmin 751) <em>did</em> get stamped <code>xmax = 752</code> — but they are invisible to your snapshot, so you can't see their headers.</li>
+  <li>The new versions' own <code>xmax</code> is 0 because nothing has replaced <em>them</em> yet.</li>
+</ul>
+
+<p>One table, two generations, and every query sees only its own generation. Nothing about the header logic changed — you were simply looking at the other generation.</p>
+
+<h2>Why this makes vacuum wait</h2>
+
+<p>Now the consequence that matters for production:</p>
+
+<blockquote>A dead tuple can only be removed once <strong>no snapshot can possibly need it anymore</strong>. Any transaction still open — even one doing absolutely nothing, even one whose next query would never look at those rows — pins the horizon: vacuum must assume its snapshot could still require the old versions.</blockquote>
+
+<p>So a session that does <code>BEGIN; SELECT 1;</code> and then goes to lunch is not "harmless". It is a hand holding the archive door open. Every dead tuple created after its first snapshot accumulates — bloat grows, vacuum "does nothing", autovacuum keeps waking up for nothing. This is the exact failure mode from the PlanetScale article, and Episode 2's experiment will reproduce it on purpose.</p>
+
+<p class="informational">One subtlety worth knowing now: the default isolation level (<code>READ COMMITTED</code>) takes a <em>fresh</em> snapshot per statement, so an idle session's <em>next</em> query would see new data — but its <em>horizon</em> is still pinned from its first statement. The danger does not require exotic isolation levels.</p>
+
+<h2>Check yourself</h2>
+
+<div class="quiz">
+  <p class="question">A snapshot is best described as…</p>
+  <div class="options">
+    <button data-correct="false">A backup of heap pages</button>
+    <button data-correct="true">A list of in-progress transactions</button>
+    <button data-correct="false">A journal of committed transactions</button>
+  </div>
+  <p class="explanation">The snapshot records which transactions were still running when it was taken. Visibility of each version is then decided by comparing its xmin/xmax against that list.</p>
+</div>
+
+<div class="quiz">
+  <p class="question">A row version is visible to a transaction when…</p>
+  <div class="options">
+    <button data-correct="true">xmin committed before its snapshot</button>
+    <button data-correct="false">xmax committed before its snapshot</button>
+    <button data-correct="false">xmin started before its snapshot</button>
+  </div>
+  <p class="explanation">Committed is the key word — a transaction that started but hasn't committed must keep its writes invisible. And xmax committing is what makes a version <em>invisible</em>, not visible.</p>
+</div>
+
+<div class="quiz">
+  <p class="question">VACUUM cannot remove a dead tuple while…</p>
+  <div class="options">
+    <button data-correct="true">Some transaction might still need it</button>
+    <button data-correct="false">Autovacuum has not yet run there</button>
+    <button data-correct="false">No index has been rebuilt yet</button>
+  </div>
+  <p class="explanation">The horizon rule: any open transaction's snapshot could still require the old version, so vacuum must leave it — no matter how dead it looks to everyone else.</p>
+</div>
+
+<h2>Run it in your lab</h2>
+
+<p>You need two terminal windows. Terminal A will hold a transaction open; Terminal B commits an update underneath it.</p>
+
+<p><strong>First, write your prediction</strong>: after B's update commits, what will A's re-run of <code>SELECT</code> show — old values or new? And what changes after A finally runs <code>COMMIT;</code>?</p>
+
+<pre><code># recreate the practice table (the lab was wiped for the 1M experiment)
+docker exec -it pglab psql -U pglab -d pglab -c "create table t as select generate_series(1,3) as i;"</code></pre>
+
+<pre><code># TERMINAL A — interactive session, keep it open
+docker exec -it pglab psql -U pglab -d pglab
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SELECT xmin, xmax, i FROM t;</code></pre>
+
+<pre><code># TERMINAL B
+docker exec -it pglab psql -U pglab -d pglab -c "update t set i = i + 100;"</code></pre>
+
+<pre><code># TERMINAL A again — before you run it: prediction!
+SELECT xmin, xmax, i FROM t;
+COMMIT;
+SELECT xmin, xmax, i FROM t;</code></pre>
+
+<p>While A is still open (before its <code>COMMIT;</code>), run this from any window and notice who is holding the door:</p>
+
+<pre><code>docker exec -it pglab psql -U pglab -d pglab -c "select pid, state, xact_start, backend_xmin from pg_stat_activity where state = 'idle in transaction';"</code></pre>
+
+<p>Things to notice:</p>
+
+<ul>
+  <li>Did A see old values <em>after</em> B committed? Why must those old versions stay on disk?</li>
+  <li>What is A's <code>backend_xmin</code> — and what does its continued existence promise to vacuum?</li>
+  <li>After A commits, re-run the <code>pg_stat_activity</code> query: the hand on the door is gone.</li>
+</ul>
+
+<p>Save your transcript to <code>blog/experiments/0003-snapshot-horizon.txt</code> (prediction on top, per the convention).</p>
+
+<h2>Primary source</h2>
+
+<p><a href="https://www.postgresql.org/docs/17/transaction-iso.html"><em>Chapter 13.2 — Transaction Isolation</em></a> (official snapshot semantics per isolation level) and <a href="https://www.postgresql.org/docs/17/routine-vacuuming.html#VACUUM-FOR-RECLAIMING-SPACE"><em>Chapter 25 — vacuum and the visibility horizon</em></a>. Deep dive on how removing tuples actually works: <a href="https://www.interdb.jp/pg/pgsql07.html"><em>Internals of PostgreSQL, Ch. 7 (VACUUM)</em></a>.</p>
+
+<footer class="lesson">
+  <p><strong>Stuck?</strong> Ask your agent — bring your prediction and the transcript; checking a wrong prediction is the cheapest way to learn.</p>
+  <p><a href="../lessons/0001-mvcc-row-versions.html">← Lesson 0001</a> · <a href="../GLOSSARY.md">Glossary</a> · Next lesson: <em>0003 — Autovacuum's trigger math: why big tables clean up late</em></p>
+</footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
