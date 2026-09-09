@@ -1,0 +1,33 @@
+Prediction (before running):
+1. After inserting 1M rows:  n_live_tup = 1000003     table size = 2600 kb
+2. After updating ALL 1M rows (no vacuum):  n_live_tup = same   n_dead_tup = 1000003   table size = 5200kb
+3. Bonus: after VACUUM, table size will (shrink back / stay the same) because 2600kb
+---
+TRANSCRIPT
+
+STAGE 1 - fresh lab, create events (1M rows), autovacuum disabled on it
+CREATE TABLE events AS SELECT generate_series(1,1000000) AS id, md5(random()::text) AS payload;
+ALTER TABLE events SET (autovacuum_enabled = false);
+
+PS> go run ./cmd/pglab tables
+TABLE   SIZE     LIVE       DEAD  DEAD %  LAST VACUUM  LAST AUTOVACUUM
+events  65.5 MB  1,000,000  0     0.0%    never        never
+
+STAGE 2 - update all 1M rows (no vacuum yet)
+UPDATE events SET payload = payload;
+=> UPDATE 1000000
+
+PS> go run ./cmd/pglab tables
+TABLE   SIZE      LIVE       DEAD       DEAD %  LAST VACUUM  LAST AUTOVACUUM
+events  130.7 MB  1,000,000  1,000,000  50.0%   never        never
+
+STAGE 3 - manual vacuum
+VACUUM events;
+=> VACUUM
+
+PS> go run ./cmd/pglab tables
+TABLE   SIZE      LIVE       DEAD  DEAD %  LAST VACUUM  LAST AUTOVACUUM
+events  130.7 MB  1,000,000  0     0.0%    0s ago       never
+
+Observation (fill in before reading any docs):
+- so my observation on the size was based on something like if 3 rows are having 8kb how many rows will 1000000 rows will have thats but my math being weak i failed xD but nonetheless i thought after the vaccumm the size will decrease like it will get half but it stayed the same which was suprising to me btw so yeah 

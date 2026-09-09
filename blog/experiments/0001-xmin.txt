@@ -1,0 +1,71 @@
+1. The first command docker exec -it pglab psql -U pglab -d pglab -c "drop table if exists t; create table t as select generate_series(1,3) AS i;"
+
+- it runs pgsql inside your docker container pglab and executes sql against the db and generates a table having 1,2,3 as its elements 
+
+2 docker exec -it pglab psql -U pglab -d pglab -c "select xmin, xmax, i from t;"
+
+- runs the query inside the pglab that displays each pg transaction metadata (xmin,xmax) along with its i value
+
+3 docker exec -it pglab psql -U pglab -d pglab -c "update t set i = i * 10;"
+
+- multiples the data with 10 inside the pglab 1-> 10 ,2->20,3->30
+
+4.docker exec -it pglab psql -U pglab -d pglab -c "select xmin, xmax, i from t;"
+
+- again does the same from the 2nd command but this time the value will be diff 
+
+Terminal Response
+PS C:\Users\ChinmaySawant\spam\pg-lab> docker exec -it pglab psql -U pglab -d pglab -c "drop table if exists t; create table t as select generate_series(1,3) AS i;"
+NOTICE:  table "t" does not exist, skipping
+DROP TABLE
+SELECT 3
+
+What's next:
+    Try Docker Debug for seamless, persistent debugging tools in any container or image → docker debug pglab
+    Learn more at https://docs.docker.com/go/debug-cli/
+PS C:\Users\ChinmaySawant\spam\pg-lab> 
+
+
+PS C:\Users\ChinmaySawant\spam\pg-lab> docker exec -it pglab psql -U pglab -d pglab -c "select xmin, xmax, i from t;"
+>> 
+ xmin | xmax | i 
+------+------+---
+  751 |    0 | 1
+  751 |    0 | 2
+  751 |    0 | 3
+(3 rows)
+
+
+What's next:
+    Try Docker Debug for seamless, persistent debugging tools in any container or image → docker debug pglab
+    Learn more at https://docs.docker.com/go/debug-cli/
+PS C:\Users\ChinmaySawant\spam\pg-lab> 
+
+PS C:\Users\ChinmaySawant\spam\pg-lab> docker exec -it pglab psql -U pglab -d pglab -c "update t set i = i * 10;"
+UPDATE 3
+
+What's next:
+    Try Docker Debug for seamless, persistent debugging tools in any container or image → docker debug pglab
+    Learn more at https://docs.docker.com/go/debug-cli/
+PS C:\Users\ChinmaySawant\spam\pg-lab> 
+
+What's next:
+    Try Docker Debug for seamless, persistent debugging tools in any container or image → docker debug pglab
+    Learn more at https://docs.docker.com/go/debug-cli/
+PS C:\Users\ChinmaySawant\spam\pg-lab> docker exec -it pglab psql -U pglab -d pglab -c "select xmin, xmax, i from t;"
+ xmin | xmax | i  
+------+------+----
+  752 |    0 | 10
+  752 |    0 | 20
+  752 |    0 | 30
+(3 rows)
+
+
+What's next:
+    Try Docker Debug for seamless, persistent debugging tools in any container or image → docker debug pglab
+    Learn more at https://docs.docker.com/go/debug-cli/
+PS C:\Users\ChinmaySawant\spam\pg-lab> 
+
+
+The xmin value updated doesnt stay the same as the past the xmax still stays the zero i dont know the real reason prediction i think the older value as per our discussion are not deleted but stored somewhere and table or db size increase from n to n*2 where n is the initial number of entity 
+we cant see the old values but they are present somewhere and we cant just get the snapshot of them they will be cleared when vaccum happens 

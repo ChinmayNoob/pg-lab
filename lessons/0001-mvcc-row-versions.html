@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0001 · Row versions: UPDATE never edits in place</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<header class="episode">
+  <p class="kicker">pg-lab · Phase 1: MVCC &amp; Vacuum · Lesson 0001</p>
+  <h1>Row versions: UPDATE never edits in place</h1>
+  <p><em>15 minutes · feeds Episode 1 (<code>pglab tables</code>) · exit test: you can say what an <code>UPDATE</code> physically writes, and prove it in the lab.</em></p>
+</header>
+
+<h2>The one idea</h2>
+
+<p>In most databases, an <code>UPDATE</code> edits a row where it sits. <strong>PostgreSQL does not.</strong> Every <code>UPDATE</code> writes a <em>brand-new copy of the row</em> (a new <strong>row version</strong>) and leaves the old copy behind. The old copy becomes a <strong>dead tuple</strong> — invisible to readers, but still occupying disk and memory until <code>VACUUM</code> removes it.</p>
+
+<blockquote>PostgreSQL trades in-place mutation for versioned history. That trade is called MVCC — Multi-Version Concurrency Control — and almost everything strange about Postgres at scale (bloat, vacuum lag, the danger of idle transactions) is a consequence of it.</blockquote>
+
+<p>This is the first claim of the Phase 1 exit test. By the end of this lesson you will have seen it with your own eyes, not read about it.</p>
+
+<h2>The header that makes it work: xmin and xmax</h2>
+
+<p>Every row version carries a small header with, among other fields, two transaction IDs:</p>
+
+<table>
+  <tr><th>Field</th><th>Meaning</th></tr>
+  <tr><td><code>xmin</code></td><td>ID of the transaction that <strong>inserted</strong> this version</td></tr>
+  <tr><td><code>xmax</code></td><td>ID of the transaction that <strong>deleted</strong> (or replaced) this version — 0 while none has</td></tr>
+</table>
+
+<p>An <code>UPDATE</code> therefore does two writes: the <em>old</em> version gets its <code>xmax</code> stamped with the updating transaction, and a <em>new</em> version appears whose <code>xmin</code> is that same transaction. You can query these fields directly — they are real columns on every table:</p>
+
+<pre><code>SELECT xmin, xmax, * FROM some_table LIMIT 3;</code></pre>
+
+<h2>Live vs. dead</h2>
+
+<ul>
+  <li>A <span class="tuple-live">live tuple</span> is a version that at least one possible or current snapshot can still see.</li>
+  <li>A <span class="tuple-dead">dead tuple</span> is a version that <em>no</em> snapshot can see anymore — but which still sits in the heap until vacuum reclaims it.</li>
+</ul>
+
+<p>Between "live" and "dead" there is a crucial middle state that Episode 2 is about: versions that are dead <em>in spirit</em> but not reclaimable, because some old transaction somewhere <em>might still want to see them</em>. Hold that thought.</p>
+
+<h2>Why this trade pays off (for now)</h2>
+
+<p>Because nothing is edited in place, a reader never has to wait for a writer and a writer never has to wait for a reader: each just works on the versions that are visible to it. The one-line visibility rule (deep dive next lesson): <em>a transaction sees a version if that version's <code>xmin</code> had committed when the transaction's snapshot was taken, and its <code>xmax</code> has not.</em></p>
+
+<h2>Check yourself</h2>
+
+<div class="quiz">
+  <p class="question">What does PostgreSQL physically write when you UPDATE one row?</p>
+  <div class="options">
+    <button data-correct="false">An in-place row edit</button>
+    <button data-correct="true">A fresh row version</button>
+    <button data-correct="false">A partial row rewrite</button>
+  </div>
+  <p class="explanation">A new full copy of the row is written and the old version is marked with the updater's <code>xmax</code>. Update the same row a thousand times and you have a thousand versions — this is why churn-heavy tables bloat.</p>
+</div>
+
+<div class="quiz">
+  <p class="question">In a row version's header, xmin holds…</p>
+  <div class="options">
+    <button data-correct="false">The deleting transaction's ID</button>
+    <button data-correct="true">The inserting transaction's ID</button>
+    <button data-correct="false">The locking transaction's ID</button>
+  </div>
+  <p class="explanation"><code>xmin</code> = the transaction that created this version; <code>xmax</code> = the one that deleted/replaced it. Visibility is decided purely by comparing these two against a snapshot.</p>
+</div>
+
+<div class="quiz">
+  <p class="question">A dead tuple is a version that…</p>
+  <div class="options">
+    <button data-correct="false">Every snapshot still sees</button>
+    <button data-correct="true">No snapshot can see</button>
+    <button data-correct="false">Only one snapshot sees</button>
+  </div>
+  <p class="explanation">Dead means invisible to every possible future snapshot — but still on disk. Removing dead tuples is precisely <code>VACUUM</code>'s job, and vacuum can only do it once no live transaction might still need them.</p>
+</div>
+
+<h2>Run it in your lab</h2>
+
+<p><strong>First, write your prediction</strong> (one sentence in a scratch file): <em>after the <code>UPDATE</code> below, what <code>xmin</code> values will the rows show — and will the <code>xmin</code> values you saw before the update appear anywhere?</em></p>
+
+<pre><code>docker exec -it pglab psql -U pglab -d pglab -c "drop table if exists t; create table t as select generate_series(1,3) AS i;"
+docker exec -it pglab psql -U pglab -d pglab -c "select xmin, xmax, i from t;"
+docker exec -it pglab psql -U pglab -d pglab -c "update t set i = i * 10;"
+docker exec -it pglab psql -U pglab -d pglab -c "select xmin, xmax, i from t;"</code></pre>
+
+<p>Things to notice while comparing the two <code>SELECT</code> outputs:</p>
+
+<ul>
+  <li>Did any pre-update <code>xmin</code> value survive the <code>UPDATE</code>? What does that tell you about in-place vs. copy-on-write?</li>
+  <li>What is <code>xmax</code> in the second output? (Hint: these are the <em>new</em> versions. Where did their <code>xmax</code>-worthy counterpart go?)</li>
+  <li>The old versions didn't disappear from disk — the table just got bigger. Keep this thought; Episode 1 measures exactly this.</li>
+</ul>
+
+<p>Save your terminal transcript to <code>blog/experiments/0001-xmin.txt</code> — it goes into the Episode 1 post.</p>
+
+<h2>Primary source</h2>
+
+<p>Read <a href="https://www.postgresql.org/docs/17/mvcc.html"><em>Chapter 13. Concurrency Control</em></a> (sections 13.1–13.2 are enough) — the official statement of everything above. For the tuple header layout down to the byte, see <a href="https://www.interdb.jp/pg/pgsql05.html"><em>The Internals of PostgreSQL, Ch. 5</em></a>.</p>
+
+<footer class="lesson">
+  <p><strong>Stuck?</strong> Ask your agent — it is your teacher for this workspace and can walk through anything unclear, or check your prediction before you run the experiment.</p>
+  <p><a href="../GLOSSARY.md">Glossary</a> (terms appear here only after you've used them correctly) · Next lesson: <em>0002 — Snapshots: who sees which version, and why an open transaction is vacuum's enemy</em></p>
+</footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

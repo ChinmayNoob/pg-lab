@@ -5,10 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strconv"
 	"time"
 
+	"github.com/ChinmayNoob/pg-lab/internal/collector"
 	"github.com/ChinmayNoob/pg-lab/internal/postgres"
+	"github.com/ChinmayNoob/pg-lab/internal/render"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -24,6 +25,8 @@ func main() {
 	switch os.Args[1] {
 	case "ping":
 		err = ping(ctx, os.Args[2:])
+	case "tables":
+		err = tables(ctx, os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -41,7 +44,33 @@ func usage() {
 usage: pglab <command> [flags]
 
 commands:
-  ping        check connectivity to the lab database`)
+  ping        check connectivity to the lab database
+  tables      dead/live tuple stats per table (pg_stat_user_tables)`)
+}
+
+func tables(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("tables", flag.ContinueOnError)
+	dsn := fs.String("dsn", postgres.DefaultDSN, "postgres connection string")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	pool, err := postgres.NewPool(ctx, *dsn)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	stats, err := collector.TableStats(ctx, pool)
+	if err != nil {
+		return fmt.Errorf("collect table stats: %w", err)
+	}
+	if len(stats) == 0 {
+		fmt.Println("no user tables found")
+		return nil
+	}
+	render.Tables(stats)
+	return nil
 }
 
 func ping(ctx context.Context, args []string) error {
@@ -95,29 +124,14 @@ func ping(ctx context.Context, args []string) error {
 	fmt.Printf("database   %s\n", db.Name)
 	fmt.Printf("backends   %d\n", db.Backends)
 	fmt.Printf("xacts      %s committed / %s rolled back\n",
-		comma(db.XactCommit), comma(db.XactRollback))
+		render.Comma(db.XactCommit), render.Comma(db.XactRollback))
 	if hit, total := db.BlksHit, db.BlksHit+db.BlksRead; total > 0 {
 		fmt.Printf("blocks     %.1f%% cache hit (%s hit / %s read)\n",
-			100*float64(hit)/float64(total), comma(hit), comma(db.BlksRead))
+			100*float64(hit)/float64(total), render.Comma(hit), render.Comma(db.BlksRead))
 	}
-	fmt.Printf("deadlocks  %s\n", comma(db.Deadlocks))
+	fmt.Printf("deadlocks  %s\n", render.Comma(db.Deadlocks))
 	fmt.Println()
 	fmt.Printf("OK in %s\n", elapsed.Round(time.Millisecond))
 
 	return nil
-}
-
-func comma(n int64) string {
-	s := strconv.FormatInt(n, 10)
-	if len(s) <= 3 {
-		return s
-	}
-	var out []byte
-	for i, c := range []byte(s) {
-		if i > 0 && (len(s)-i)%3 == 0 {
-			out = append(out, ',')
-		}
-		out = append(out, c)
-	}
-	return string(out)
 }

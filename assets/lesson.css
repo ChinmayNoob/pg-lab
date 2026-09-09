@@ -1,0 +1,177 @@
+/* pg-lab shared lesson stylesheet — linked by every lesson. */
+:root {
+  --paper: #fffdf8;
+  --ink: #1f1d1a;
+  --muted: #6f6a61;
+  --accent: #8b2500;
+  --rule: #e2ddd2;
+  --code-bg: #f4f0e6;
+  --good: #1e6b34;
+  --bad: #a02020;
+}
+
+* { box-sizing: border-box; }
+
+html {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: Charter, Georgia, "Times New Roman", serif;
+  font-size: 19px;
+  line-height: 1.55;
+}
+
+body {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 3rem 1.25rem 6rem;
+}
+
+header.episode {
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 1rem;
+  margin-bottom: 2.5rem;
+}
+
+.kicker {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 0.4rem;
+}
+
+h1 {
+  font-size: 1.9rem;
+  line-height: 1.2;
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+
+h2 {
+  font-size: 1.25rem;
+  margin: 2.8rem 0 0.8rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--rule);
+}
+
+h3 { font-size: 1.02rem; margin: 1.8rem 0 0.5rem; }
+
+p { margin: 0.8rem 0; }
+
+a { color: var(--accent); text-underline-offset: 3px; }
+
+blockquote {
+  margin: 1.2rem 0;
+  padding: 0.2rem 0 0.2rem 1.1rem;
+  border-left: 3px solid var(--accent);
+  color: var(--ink);
+  font-style: italic;
+}
+
+code, pre {
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 0.82em;
+}
+
+code {
+  background: var(--code-bg);
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+}
+
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 1rem 1.2rem;
+  overflow-x: auto;
+  line-height: 1.45;
+}
+
+pre code { background: none; padding: 0; font-size: 0.85rem; }
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9rem;
+  margin: 1.2rem 0;
+}
+
+th, td {
+  text-align: left;
+  padding: 0.45rem 0.7rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+th {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.tuple-live  { color: var(--good); font-weight: 600; }
+.tuple-dead  { color: var(--bad);  font-weight: 600; text-decoration: line-through; }
+
+figure { margin: 1.4rem 0; }
+figcaption { font-size: 0.8rem; color: var(--muted); margin-top: 0.4rem; }
+
+.quiz {
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 1.1rem 1.3rem;
+  margin: 1.6rem 0;
+  background: #fffefb;
+}
+
+.quiz .question {
+  font-weight: 600;
+  margin: 0 0 0.8rem;
+}
+
+.quiz .options { display: grid; gap: 0.5rem; }
+
+.quiz button {
+  font: inherit;
+  font-size: 0.95rem;
+  text-align: left;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--paper);
+  cursor: pointer;
+}
+
+.quiz button:hover { border-color: var(--muted); }
+
+.quiz.answered button { cursor: default; opacity: 0.55; }
+.quiz.answered button.correct   { opacity: 1; border-color: var(--good); color: var(--good); font-weight: 600; }
+.quiz.answered button.incorrect { opacity: 1; border-color: var(--bad);  color: var(--bad);  text-decoration: line-through; }
+
+.quiz .explanation {
+  display: none;
+  margin: 0.9rem 0 0;
+  font-size: 0.9rem;
+  border-top: 1px dashed var(--rule);
+  padding-top: 0.7rem;
+}
+
+.quiz.answered .explanation { display: block; }
+
+footer.lesson {
+  margin-top: 3.5rem;
+  border-top: 2px solid var(--ink);
+  padding-top: 1rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+footer.lesson a { color: var(--accent); }
+
+@media print {
+  body { max-width: none; padding: 0; font-size: 11pt; }
+  .quiz button { border: 1px solid #999; }
+  .quiz .explanation { display: block; }
+}
